@@ -1,0 +1,27 @@
+---
+# tasks file for roles/configservice
+- name: copy
+  copy:
+    src: "{{ src }}"
+    dest: "{{ dest }}"
+    owner: "{{ owner }}"
+    group: "{{ group }}"
+    mode: "{{ mode }}"
+  register: fileregister
+  when: src != ""
+
+  copy:
+    content: "{{ content }}"
+    dest: "{{ dest }}"
+    owner: "{{ owner }}"
+    group: "{{ group }}"
+    mode: "{{ mode }}"
+  register: fileregister
+  when: content != ""
+
+- name: restart service
+  service:
+    name: "{{ package }}"
+    state: restarted
+  when: fileregister.changed
+

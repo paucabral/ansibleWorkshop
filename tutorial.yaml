@@ -1,83 +1,49 @@
----
-  - name: Test Playbook
-    hosts: all
-
-    tasks:
-    - name: Ping all nodes
-      ping:
-
-    - name: see whoami
-      shell: "whoami"
-      register: output
-
-    - name: look output
-      debug:
-        msg: "{{ output.stdout }}"
-  
+---  
   - name: Install apache to web server
     hosts: web
 
     tasks:
-    - name: install apache2 in web server
-      apt:
-        name: apache2
-        state: latest
-        update_cache: yes
+    - name: use installpackages role
+      include_role:
+        name: installpackages
+      vars:
+        package: "apache2"
+        service: "apache2"
 
-    - name: start and enable apache2 service
-      service:
-        name: apache2
-        state: started
-        enabled: yes
-
-    - name: Create index.html in /var/www/html
-      copy:
+    - name: use configservice role
+      include_role:
+        name: configservice
+      vars:
         content: "{{ ansible_default_ipv4.address }} {{ ansible_hostname }}"
-        dest: /var/www/html/index.html
-        owner: training
-        group: training
-        mode: '0755'
+        dest: "/var/www/html/index.html"
+        owner: "training"
+        group: "training"
+        mode: "0755"
+        package: "apache2"
 
-    - name: restart apache2
-      service:
-        name: apache2
-        state: restarted
-        enabled: yes
-  
   - name: Install DB in node3
     hosts: db
 
     tasks:
-    - name: install InfluxDB key
-      apt_key:
-        url: https://repos.influxdata.com/influxdb.key
-        state: present
-
-    - name: add InfluxDB repository
-      apt_repository:
-        repo: deb https://repos.influxdata.com/ubuntu bionic stable
-        state: present
-        filename: influxdb.list
-
-    - name: install InfluxDB
-      apt:
-        name: influxdb
-        state: latest
-        update_cache: yes
+    - name: use installpackages role
+      include_role:
+        name: installpackages
+      vars:
+        url: "https://repos.influxdata.com/influxdb.key"
+        repo: "deb https://repos.influxdata.com/ubuntu bionic stable"
+        package: "influxdb"
+        service: "influxdb"
     
-    - name: copy configuration file to /etc/influxdb/influxdb.conf
-      copy:
-        src: files/influxdb.conf
-        dest: /etc/influxdb/influxdb.conf
-        owner: root
-        group: root
-        mode: '0644'
-
-    - name: restart influxdb service
-      service:
-        name: influxdb
-        state: restarted
-        enabled: yes
+    - name: use configservice role
+      include_role:
+        name: configservice
+      vars:
+        src: "files/influxdb.conf"
+        dest: "/etc/influxdb/influxdb.conf"
+        owner: "root"
+        group: "root"
+        mode: "0644"
+        package: "influxdb"
 
   - name: Add database and user from control to db
     hosts: control
@@ -98,14 +64,14 @@
 
     - name: create database in db server
       influxdb_database:
-        hostname: 10.240.0.29
+        hostname: 10.240.0.21
         database_name: server_metrics
 
     - name: create user in database
       influxdb_user:
         user_name: server
         user_password: s3cr3t
-        hostname: 10.240.0.29
+        hostname: 10.240.0.21
         grants:
           - database: "server_metrics"
             privilege: "all"
@@ -114,28 +80,14 @@
     hosts: monitor
 
     tasks:
-    - name: add apt key for Grafana
-      apt_key:
-        url: https://packages.grafana.com/gpg.key
-        state: present
-
-    - name: add respository for Grafana
-      apt_repository:
-        repo: deb https://packages.grafana.com/oss/deb stable main
-        state: present
-        filename: grafana.list
-
-    - name: install grafana
-      apt:
-        name: grafana
-        state: latest
-        update_cache: yes
-
-    - name: start and enable grafana
-      service:
-        name: grafana-server
-        state: started
-        enabled: yes
+    - name: use installpackages role
+      include_role:
+        name: installpackages
+      vars:
+        url: "https://packages.grafana.com/gpg.key"
+        repo: "deb https://packages.grafana.com/oss/deb stable main"
+        package: "grafana"
+        service: "grafana-server"
 
   - name: Install servermetrics.py
     hosts: nodes
@@ -155,15 +107,41 @@
         executable: pip3
 
     - name: render servermetrics.py in /home/training
-      template:
-        src: servermetrics.py.j2
-        dest: /home/training/servermetrics.py
-        owner: training
-        group: training
-        mode: '0755'
-    
-    - name: run once servermetrics.py
-      shell: "python3 /home/training/servermetrics.py prod"
+      block:
+        - name: render test template
+          template:
+            src: servermetrics.py.j2
+            dest: /home/training/testservermetrics.py
+            owner: training
+            group: training
+            mode: '0755'
+
+        - name: test servermetrics
+          shell: "python3 /home/training/testservermetrics.py test"
+          register: test_servermetrics
+
+        - name: remove test file
+          file:
+            path: /home/training/testservermetrics.py
+            state: absent
+
+        - name: render prod file
+          template:
+            src: servermetrics.py.j2
+            dest: /home/training/servermetrics.py
+            owner: training
+            group: training
+            mode: '0755'
+          register: metricsfile
+
+        - name: run once servermetrics.py
+          shell: "python3 /home/training/servermetrics.py prod"
+          when: metricsfile.changed
+      rescue:
+        - name: remove test file
+          file:
+            path: /home/training/testservermetrics.py
+            state: absent
 
     - name: add in crontab
       cron:
