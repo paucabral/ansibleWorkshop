@@ -89,62 +89,20 @@
         package: "grafana"
         service: "grafana-server"
 
+
   - name: Install servermetrics.py
     hosts: nodes
 
     tasks:
-    - name: install pip3
-      apt:
-        name: python3-pip
-        state: latest
-        update_cache: yes
-
-    - name: install prerequisites
-      pip:
-        name:
-          - influxdb
-          - psutil
-        executable: pip3
-
-    - name: render servermetrics.py in /home/training
-      block:
-        - name: render test template
-          template:
-            src: servermetrics.py.j2
-            dest: /home/training/testservermetrics.py
-            owner: training
-            group: training
-            mode: '0755'
-
-        - name: test servermetrics
-          shell: "python3 /home/training/testservermetrics.py test"
-          register: test_servermetrics
-
-        - name: remove test file
-          file:
-            path: /home/training/testservermetrics.py
-            state: absent
-
-        - name: render prod file
-          template:
-            src: servermetrics.py.j2
-            dest: /home/training/servermetrics.py
-            owner: training
-            group: training
-            mode: '0755'
-          register: metricsfile
-
-        - name: run once servermetrics.py
-          shell: "python3 /home/training/servermetrics.py prod"
-          when: metricsfile.changed
-      rescue:
-        - name: remove test file
-          file:
-            path: /home/training/testservermetrics.py
-            state: absent
-
-    - name: add in crontab
-      cron:
-        name: server_metrics
-        minute: "*/2"
-        job: "python3 /home/training/servermetrics.py prod"
+    - name: use servermetrics role
+      include_role:
+        name: servermetrics
+      vars:
+        path: "/home/training"
+        owner: "training"
+        group: "training"
+        host: '10.240.0.21'
+        port: '8086'
+        username: 'server'
+        password: 's3cr3t'
+        measurement: 'server_metrics'

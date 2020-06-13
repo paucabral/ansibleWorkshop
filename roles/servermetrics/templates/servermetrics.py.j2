@@ -25,9 +25,14 @@ data_points = [
             }
         ]
 
+host = '10.240.0.21'
+port = '8086'
+username = 'server'
+password = 's3cr3t'
+measurement = 'server_metrics'
 
 if sys.argv[1] == "test":
 	print(data_points)
 else:
-	client = InfluxDBClient("{{ host }}", "{{ port }}", "{{ username }}", "{{ password }}", "{{ measurement }}")
+	client = InfluxDBClient(host, port, username, password, measurement)
 	client.write_points(data_points)
